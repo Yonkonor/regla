@@ -27,7 +27,8 @@ body {
   font-size: 22px;
 }
 
-#sliderContainer {
+#sliderContainer,
+#noiseContainer {
   margin-top: 30px;
 }
 
@@ -48,7 +49,7 @@ Distancia: 0 cm
 </div>
 
 <div id="sliderContainer">
-  <p>Umbral: <span id="thresholdValue">0.20</span></p>
+  <p>Umbral Movimiento: <span id="thresholdValue">0.20</span></p>
   <input
     type="range"
     id="thresholdSlider"
@@ -56,6 +57,18 @@ Distancia: 0 cm
     max="1"
     step="0.01"
     value="0.20"
+  >
+</div>
+
+<div id="noiseContainer">
+  <p>Umbral Distancia (Ruido): <span id="noiseValue">0.50</span> cm</p>
+  <input
+    type="range"
+    id="noiseSlider"
+    min="0"
+    max="10"
+    step="0.1"
+    value="0.5"
   >
 </div>
 
@@ -67,6 +80,7 @@ let distance = 0;
 let isMoving = false;
 
 let threshold = 0.2;
+let noiseThreshold = 0.5; // cm
 
 const btn = document.getElementById("statusBtn");
 const distanceText = document.getElementById("distance");
@@ -74,11 +88,20 @@ const distanceText = document.getElementById("distance");
 const slider = document.getElementById("thresholdSlider");
 const thresholdLabel = document.getElementById("thresholdValue");
 
+const noiseSlider = document.getElementById("noiseSlider");
+const noiseLabel = document.getElementById("noiseValue");
+
 thresholdLabel.textContent = threshold.toFixed(2);
+noiseLabel.textContent = noiseThreshold.toFixed(2);
 
 slider.addEventListener("input", () => {
   threshold = parseFloat(slider.value);
   thresholdLabel.textContent = threshold.toFixed(2);
+});
+
+noiseSlider.addEventListener("input", () => {
+  noiseThreshold = parseFloat(noiseSlider.value);
+  noiseLabel.textContent = noiseThreshold.toFixed(2);
 });
 
 function requestPermission() {
@@ -153,7 +176,11 @@ function updateUI() {
     btn.textContent = "Quieto";
   }
 
-  const cm = Math.abs(distance * 100);
+  let cm = Math.abs(distance * 100);
+
+  if (cm < noiseThreshold) {
+    cm = 0;
+  }
 
   distanceText.textContent =
     "Distancia: " + cm.toFixed(2) + " cm";
