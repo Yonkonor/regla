@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Medidor de Movimiento</title>
+
+<style>
+body {
+  font-family: Arial, sans-serif;
+  text-align: center;
+  margin-top: 40px;
+}
+
+#statusBtn {
+  width: 150px;
+  height: 150px;
+  border-radius: 50%;
+  border: none;
+  font-size: 20px;
+  color: white;
+  background-color: red;
+}
+
+#distance {
+  margin-top: 20px;
+  font-size: 22px;
+}
+</style>
+</head>
+
+<body>
+
+<h2>Estado del Móvil</h2>
+
+<button id="statusBtn">Quieto</button>
+
+<div id="distance">
+Distancia: 0 cm
+</div>
+
+<script>
+let lastTime = null;
+let velocity = 0;
+let distance = 0;
+
+let isMoving = false;
+
+const threshold = 0.2; // Sensibilidad
+const btn = document.getElementById("statusBtn");
+const distanceText = document.getElementById("distance");
+
+function requestPermission() {
+  if (typeof DeviceMotionEvent.requestPermission === "function") {
+    DeviceMotionEvent.requestPermission()
+      .then(response => {
+        if (response === "granted") {
+          startSensor();
+        }
+      });
+  } else {
+    startSensor();
+  }
+}
+
+function startSensor() {
+  window.addEventListener("devicemotion", handleMotion);
+}
+
+function handleMotion(event) {
+  const acc = event.accelerationIncludingGravity;
+
+  if (!acc) return;
+
+  const ax = acc.x || 0;
+  const ay = acc.y || 0;
+  const az = acc.z || 0;
+
+  const totalAcc = Math.sqrt(ax*ax + ay*ay + az*az) - 9.8;
+
+  const now = Date.now();
+
+  if (lastTime === null) {
+    lastTime = now;
+    return;
+  }
+
+  const dt = (now - lastTime) / 1000;
+  lastTime = now;
+
+  if (Math.abs(totalAcc) > threshold) {
+
+    if (!isMoving) {
+      velocity = 0;
+      distance = 0;
+    }
+
+    isMoving = true;
+
+    velocity += totalAcc * dt;
+    distance += velocity * dt;
+
+  } else {
+
+    if (isMoving) {
+      velocity = 0;
+    }
+
+    isMoving = false;
+  }
+
+  updateUI();
+}
+
+function updateUI() {
+
+  if (isMoving) {
+    btn.style.backgroundColor = "green";
+    btn.textContent = "En movimiento";
+  } else {
+    btn.style.backgroundColor = "red";
+    btn.textContent = "Quieto";
+  }
+
+  const cm = Math.abs(distance * 100);
+
+  distanceText.textContent =
+    "Distancia: " + cm.toFixed(2) + " cm";
+}
+
+document.body.addEventListener("click", requestPermission, { once: true });
+</script>
+
+</body>
+</html>
