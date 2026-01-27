@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Medidor de Movimiento</title>
+<title>Medidor con Sonido</title>
 
 <style>
 body {
@@ -44,47 +44,30 @@ input[type="range"] {
 
 <button id="statusBtn">Quieto</button>
 
-<div id="distance">
-Distancia: 0 cm
-</div>
+<div id="distance">Distancia: 0 cm</div>
 
 <div id="sliderContainer">
   <p>Umbral Aceleración: <span id="thresholdValue">0.20</span> m/s²</p>
-  <input
-    type="range"
-    id="thresholdSlider"
-    min="0.01"
-    max="3"
-    step="0.01"
-    value="0.20"
-  >
+  <input type="range" id="thresholdSlider"
+         min="0.01" max="3" step="0.01" value="0.20">
 </div>
 
 <div id="noiseContainer">
-  <p>Umbral Distancia (Ruido): <span id="noiseValue">0.50</span> cm</p>
-  <input
-    type="range"
-    id="noiseSlider"
-    min="0"
-    max="10"
-    step="0.1"
-    value="0.5"
-  >
+  <p>Umbral Distancia: <span id="noiseValue">0.50</span> cm</p>
+  <input type="range" id="noiseSlider"
+         min="0" max="10" step="0.1" value="0.5">
 </div>
 
 <script>
 let lastTime = null;
 let velocity = 0;
 let distance = 0;
-
 let isMoving = false;
 
-// Umbral mínimo de aceleración (m/s²)
 let accelThreshold = 0.2;
-
-// Umbral de ruido en cm
 let noiseThreshold = 0.5;
 
+// UI
 const btn = document.getElementById("statusBtn");
 const distanceText = document.getElementById("distance");
 
@@ -107,14 +90,63 @@ noiseSlider.addEventListener("input", () => {
   noiseLabel.textContent = noiseThreshold.toFixed(2);
 });
 
+/* ================= AUDIO ================= */
+
+let audioCtx;
+let gainNode;
+let osc1, osc2, osc3;
+let filter;
+
+function initAudio() {
+
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+  gainNode = audioCtx.createGain();
+  gainNode.gain.value = 0;
+
+  filter = audioCtx.createBiquadFilter();
+  filter.type = "lowpass";
+  filter.frequency.value = 1200;
+
+  // Re mayor: D - F# - A
+  osc1 = audioCtx.createOscillator(); // D4
+  osc2 = audioCtx.createOscillator(); // F#4
+  osc3 = audioCtx.createOscillator(); // A4
+
+  osc1.frequency.value = 293.66;
+  osc2.frequency.value = 369.99;
+  osc3.frequency.value = 440.00;
+
+  // Timbre tipo bandoneón
+  osc1.type = "sawtooth";
+  osc2.type = "sawtooth";
+  osc3.type = "sawtooth";
+
+  osc1.connect(filter);
+  osc2.connect(filter);
+  osc3.connect(filter);
+
+  filter.connect(gainNode);
+  gainNode.connect(audioCtx.destination);
+
+  osc1.start();
+  osc2.start();
+  osc3.start();
+}
+
+/* ======================================== */
+
 function requestPermission() {
+
+  if (!audioCtx) initAudio();
+
   if (typeof DeviceMotionEvent.requestPermission === "function") {
+
     DeviceMotionEvent.requestPermission()
-      .then(response => {
-        if (response === "granted") {
-          startSensor();
-        }
+      .then(r => {
+        if (r === "granted") startSensor();
       });
+
   } else {
     startSensor();
   }
@@ -126,16 +158,13 @@ function startSensor() {
 
 function handleMotion(event) {
 
-  // Aceleración sin gravedad
   const acc = event.acceleration;
-
   if (!acc) return;
 
   const ax = acc.x || 0;
   const ay = acc.y || 0;
   const az = acc.z || 0;
 
-  // Magnitud
   const totalAcc = Math.sqrt(ax*ax + ay*ay + az*az);
 
   const now = Date.now();
@@ -164,20 +193,17 @@ function handleMotion(event) {
 
     isMoving = true;
 
-    // Integración estable
     velocity += filteredAcc * dt;
     distance += velocity * dt;
 
   } else {
 
-    if (isMoving) {
-      velocity = 0;
-    }
-
+    if (isMoving) velocity = 0;
     isMoving = false;
   }
 
   updateUI();
+  updateSound();
 }
 
 function updateUI() {
@@ -192,14 +218,39 @@ function updateUI() {
 
   let cm = Math.abs(distance * 100);
 
-  // Filtro de ruido final
-  if (cm < noiseThreshold) {
-    cm = 0;
-  }
+  if (cm < noiseThreshold) cm = 0;
 
   distanceText.textContent =
     "Distancia: " + cm.toFixed(2) + " cm";
 }
+
+/* ======== CONTROL DE VOLUMEN POR DISTANCIA ======== */
+
+function updateSound() {
+
+  if (!gainNode) return;
+
+  let cm = Math.abs(distance * 100);
+
+  if (cm < noiseThreshold) {
+    gainNode.gain.value = 0;
+    return;
+  }
+
+  // Normalización (0–50 cm → 0–1)
+  let normalized = cm / 50;
+
+  if (normalized > 1) normalized = 1;
+
+  // Suavizado
+  gainNode.gain.setTargetAtTime(
+    normalized * 0.6,
+    audioCtx.currentTime,
+    0.05
+  );
+}
+
+/* ================================================ */
 
 document.body.addEventListener("click", requestPermission, { once: true });
 </script>
