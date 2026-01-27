@@ -79,7 +79,7 @@ let distance = 0;
 
 let isMoving = false;
 
-// Ahora es umbral mínimo de aceleración real
+// Umbral mínimo de aceleración (m/s²)
 let accelThreshold = 0.2;
 
 // Umbral de ruido en cm
@@ -126,7 +126,7 @@ function startSensor() {
 
 function handleMotion(event) {
 
-  // Aceleración sin gravedad (ya está en m/s² reales)
+  // Aceleración sin gravedad
   const acc = event.acceleration;
 
   if (!acc) return;
@@ -135,7 +135,7 @@ function handleMotion(event) {
   const ay = acc.y || 0;
   const az = acc.z || 0;
 
-  // Magnitud real (sin 9.8)
+  // Magnitud
   const totalAcc = Math.sqrt(ax*ax + ay*ay + az*az);
 
   const now = Date.now();
@@ -148,8 +148,14 @@ function handleMotion(event) {
   const dt = (now - lastTime) / 1000;
   lastTime = now;
 
-  // Usar umbral mínimo de aceleración
-  if (totalAcc > accelThreshold) {
+  // Filtro antideriva
+  let filteredAcc = totalAcc;
+
+  if (filteredAcc < accelThreshold) {
+    filteredAcc = 0;
+  }
+
+  if (filteredAcc > 0) {
 
     if (!isMoving) {
       velocity = 0;
@@ -158,8 +164,8 @@ function handleMotion(event) {
 
     isMoving = true;
 
-    // Integración correcta (m/s² → m/s → m)
-    velocity += totalAcc * dt;
+    // Integración estable
+    velocity += filteredAcc * dt;
     distance += velocity * dt;
 
   } else {
@@ -184,8 +190,9 @@ function updateUI() {
     btn.textContent = "Quieto";
   }
 
-  let cm = Math.abs(distance * 100); // m → cm
+  let cm = Math.abs(distance * 100);
 
+  // Filtro de ruido final
   if (cm < noiseThreshold) {
     cm = 0;
   }
