@@ -49,12 +49,12 @@ Distancia: 0 cm
 </div>
 
 <div id="sliderContainer">
-  <p>Umbral Movimiento: <span id="thresholdValue">0.20</span></p>
+  <p>Umbral Aceleración: <span id="thresholdValue">0.20</span> m/s²</p>
   <input
     type="range"
     id="thresholdSlider"
     min="0.01"
-    max="1"
+    max="3"
     step="0.01"
     value="0.20"
   >
@@ -79,8 +79,11 @@ let distance = 0;
 
 let isMoving = false;
 
-let threshold = 0.2;
-let noiseThreshold = 0.5; // cm
+// Ahora es umbral mínimo de aceleración real
+let accelThreshold = 0.2;
+
+// Umbral de ruido en cm
+let noiseThreshold = 0.5;
 
 const btn = document.getElementById("statusBtn");
 const distanceText = document.getElementById("distance");
@@ -91,12 +94,12 @@ const thresholdLabel = document.getElementById("thresholdValue");
 const noiseSlider = document.getElementById("noiseSlider");
 const noiseLabel = document.getElementById("noiseValue");
 
-thresholdLabel.textContent = threshold.toFixed(2);
+thresholdLabel.textContent = accelThreshold.toFixed(2);
 noiseLabel.textContent = noiseThreshold.toFixed(2);
 
 slider.addEventListener("input", () => {
-  threshold = parseFloat(slider.value);
-  thresholdLabel.textContent = threshold.toFixed(2);
+  accelThreshold = parseFloat(slider.value);
+  thresholdLabel.textContent = accelThreshold.toFixed(2);
 });
 
 noiseSlider.addEventListener("input", () => {
@@ -123,7 +126,7 @@ function startSensor() {
 
 function handleMotion(event) {
 
-  // CAMBIO: usar aceleración sin gravedad
+  // Aceleración sin gravedad (ya está en m/s² reales)
   const acc = event.acceleration;
 
   if (!acc) return;
@@ -132,7 +135,7 @@ function handleMotion(event) {
   const ay = acc.y || 0;
   const az = acc.z || 0;
 
-  // CAMBIO: sin restar 9.8
+  // Magnitud real (sin 9.8)
   const totalAcc = Math.sqrt(ax*ax + ay*ay + az*az);
 
   const now = Date.now();
@@ -145,7 +148,8 @@ function handleMotion(event) {
   const dt = (now - lastTime) / 1000;
   lastTime = now;
 
-  if (Math.abs(totalAcc) > threshold) {
+  // Usar umbral mínimo de aceleración
+  if (totalAcc > accelThreshold) {
 
     if (!isMoving) {
       velocity = 0;
@@ -154,6 +158,7 @@ function handleMotion(event) {
 
     isMoving = true;
 
+    // Integración correcta (m/s² → m/s → m)
     velocity += totalAcc * dt;
     distance += velocity * dt;
 
@@ -179,7 +184,7 @@ function updateUI() {
     btn.textContent = "Quieto";
   }
 
-  let cm = Math.abs(distance * 100);
+  let cm = Math.abs(distance * 100); // m → cm
 
   if (cm < noiseThreshold) {
     cm = 0;
