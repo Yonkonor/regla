@@ -26,6 +26,14 @@ body {
   margin-top: 20px;
   font-size: 22px;
 }
+
+#sliderContainer {
+  margin-top: 30px;
+}
+
+input[type="range"] {
+  width: 250px;
+}
 </style>
 </head>
 
@@ -39,6 +47,18 @@ body {
 Distancia: 0 cm
 </div>
 
+<div id="sliderContainer">
+  <p>Umbral: <span id="thresholdValue">0.20</span></p>
+  <input
+    type="range"
+    id="thresholdSlider"
+    min="0.01"
+    max="1"
+    step="0.01"
+    value="0.20"
+  >
+</div>
+
 <script>
 let lastTime = null;
 let velocity = 0;
@@ -46,9 +66,20 @@ let distance = 0;
 
 let isMoving = false;
 
-const threshold = 0.2; // Sensibilidad
+let threshold = 0.2;
+
 const btn = document.getElementById("statusBtn");
 const distanceText = document.getElementById("distance");
+
+const slider = document.getElementById("thresholdSlider");
+const thresholdLabel = document.getElementById("thresholdValue");
+
+thresholdLabel.textContent = threshold.toFixed(2);
+
+slider.addEventListener("input", () => {
+  threshold = parseFloat(slider.value);
+  thresholdLabel.textContent = threshold.toFixed(2);
+});
 
 function requestPermission() {
   if (typeof DeviceMotionEvent.requestPermission === "function") {
