@@ -122,7 +122,9 @@ function startSensor() {
 }
 
 function handleMotion(event) {
-  const acc = event.accelerationIncludingGravity;
+
+  // CAMBIO: usar aceleración sin gravedad
+  const acc = event.acceleration;
 
   if (!acc) return;
 
@@ -130,7 +132,8 @@ function handleMotion(event) {
   const ay = acc.y || 0;
   const az = acc.z || 0;
 
-  const totalAcc = Math.sqrt(ax*ax + ay*ay + az*az) - 9.8;
+  // CAMBIO: sin restar 9.8
+  const totalAcc = Math.sqrt(ax*ax + ay*ay + az*az);
 
   const now = Date.now();
 
