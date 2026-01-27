@@ -1,258 +1,287 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Medidor con Sonido</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bandoneón Sintético con Acelerómetro</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #111;
+      color: #eee;
+      text-align: center;
+      padding: 2rem;
+    }
 
-<style>
-body {
-  font-family: Arial, sans-serif;
-  text-align: center;
-  margin-top: 40px;
-}
+    button {
+      padding: 12px 20px;
+      margin: 10px;
+      font-size: 16px;
+      border-radius: 8px;
+      border: none;
+      cursor: pointer;
+    }
 
-#statusBtn {
-  width: 150px;
-  height: 150px;
-  border-radius: 50%;
-  border: none;
-  font-size: 20px;
-  color: white;
-  background-color: red;
-}
+    #startBtn { background: #2ecc71; }
+    #chordBtn { background: #3498db; }
 
-#distance {
-  margin-top: 20px;
-  font-size: 22px;
-}
-
-#sliderContainer,
-#noiseContainer {
-  margin-top: 30px;
-}
-
-input[type="range"] {
-  width: 250px;
-}
-</style>
+    .info {
+      margin-top: 20px;
+      font-size: 14px;
+      color: #aaa;
+    }
+  </style>
 </head>
-
 <body>
 
-<h2>Estado del Móvil</h2>
+  <h1>Bandoneón Sintético (Acelerómetro)</h1>
 
-<button id="statusBtn">Quieto</button>
+  <button id="startBtn">Iniciar Audio</button>
+  <button id="chordBtn">Cambiar a Re Maj7</button>
 
-<div id="distance">Distancia: 0 cm</div>
-
-<div id="sliderContainer">
-  <p>Umbral Aceleración: <span id="thresholdValue">0.20</span> m/s²</p>
-  <input type="range" id="thresholdSlider"
-         min="0.01" max="3" step="0.01" value="0.20">
-</div>
-
-<div id="noiseContainer">
-  <p>Umbral Distancia: <span id="noiseValue">0.50</span> cm</p>
-  <input type="range" id="noiseSlider"
-         min="0" max="10" step="0.1" value="0.5">
-</div>
+  <div class="info">
+    Mueve el dispositivo como si abrieras/cerraras un bandoneón.
+  </div>
 
 <script>
-let lastTime = null;
-let velocity = 0;
-let distance = 0;
-let isMoving = false;
+/*******************************
+ * CONFIGURACIÓN GENERAL
+ *******************************/
 
-let accelThreshold = 0.2;
-let noiseThreshold = 0.5;
+const NOISE_THRESHOLD = 0.15;   // Zona muerta (quieto = silencio)
+const SMOOTHING = 0.9;          // Filtro paso bajo
+const MAX_GAIN = 0.6;
 
-// UI
-const btn = document.getElementById("statusBtn");
-const distanceText = document.getElementById("distance");
-
-const slider = document.getElementById("thresholdSlider");
-const thresholdLabel = document.getElementById("thresholdValue");
-
-const noiseSlider = document.getElementById("noiseSlider");
-const noiseLabel = document.getElementById("noiseValue");
-
-thresholdLabel.textContent = accelThreshold.toFixed(2);
-noiseLabel.textContent = noiseThreshold.toFixed(2);
-
-slider.addEventListener("input", () => {
-  accelThreshold = parseFloat(slider.value);
-  thresholdLabel.textContent = accelThreshold.toFixed(2);
-});
-
-noiseSlider.addEventListener("input", () => {
-  noiseThreshold = parseFloat(noiseSlider.value);
-  noiseLabel.textContent = noiseThreshold.toFixed(2);
-});
-
-/* ================= AUDIO ================= */
+/*******************************
+ * CONTEXTO DE AUDIO
+ *******************************/
 
 let audioCtx;
-let gainNode;
-let osc1, osc2, osc3;
+let masterGain;
 let filter;
+let compressor;
+
+let oscillators = [];
+let gains = [];
+
+let running = false;
+
+/*******************************
+ * ACORDES
+ *******************************/
+
+// Re Mayor: D F# A
+// Re Maj7:  D F# A C#
+
+const chords = {
+  major: [293.66, 369.99, 440.00],
+  maj7:  [293.66, 369.99, 440.00, 554.37]
+};
+
+let currentChord = 'major';
+
+/*******************************
+ * FILTRO DE ACELERACIÓN
+ *******************************/
+
+let lastAcc = 0;
+
+function smooth(value) {
+  lastAcc = SMOOTHING * lastAcc + (1 - SMOOTHING) * value;
+  return lastAcc;
+}
+
+/*******************************
+ * INICIALIZAR AUDIO
+ *******************************/
 
 function initAudio() {
 
   audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
-  gainNode = audioCtx.createGain();
-  gainNode.gain.value = 0;
+  // Compresor (estabilidad)
+  compressor = audioCtx.createDynamicsCompressor();
+  compressor.threshold.value = -24;
+  compressor.knee.value = 30;
+  compressor.ratio.value = 6;
+  compressor.attack.value = 0.003;
+  compressor.release.value = 0.25;
 
+  // Filtro (carácter bandoneón)
   filter = audioCtx.createBiquadFilter();
-  filter.type = "lowpass";
-  filter.frequency.value = 1200;
+  filter.type = 'bandpass';
+  filter.frequency.value = 1800;
+  filter.Q.value = 1.2;
 
-  // Re mayor: D - F# - A
-  osc1 = audioCtx.createOscillator(); // D4
-  osc2 = audioCtx.createOscillator(); // F#4
-  osc3 = audioCtx.createOscillator(); // A4
+  masterGain = audioCtx.createGain();
+  masterGain.gain.value = 0;
 
-  osc1.frequency.value = 293.66;
-  osc2.frequency.value = 369.99;
-  osc3.frequency.value = 440.00;
+  filter.connect(compressor);
+  compressor.connect(masterGain);
+  masterGain.connect(audioCtx.destination);
 
-  // Timbre tipo bandoneón
-  osc1.type = "sawtooth";
-  osc2.type = "sawtooth";
-  osc3.type = "sawtooth";
-
-  osc1.connect(filter);
-  osc2.connect(filter);
-  osc3.connect(filter);
-
-  filter.connect(gainNode);
-  gainNode.connect(audioCtx.destination);
-
-  osc1.start();
-  osc2.start();
-  osc3.start();
+  createOscillators();
 }
 
-/* ======================================== */
+/*******************************
+ * CREAR ARMÓNICOS
+ *******************************/
 
-function requestPermission() {
+function createOscillators() {
 
-  if (!audioCtx) initAudio();
+  stopOscillators();
 
-  if (typeof DeviceMotionEvent.requestPermission === "function") {
+  oscillators = [];
+  gains = [];
 
-    DeviceMotionEvent.requestPermission()
-      .then(r => {
-        if (r === "granted") startSensor();
-      });
+  const baseNotes = chords[currentChord];
 
-  } else {
-    startSensor();
+  baseNotes.forEach(freq => {
+
+    // Parciales típicos de lengüeta
+    const harmonics = [1, 2, 3, 4, 5];
+
+    harmonics.forEach(h => {
+
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+
+      osc.type = 'sawtooth';
+      osc.frequency.value = freq * h;
+
+      gain.gain.value = 0;
+
+      osc.connect(gain);
+      gain.connect(filter);
+
+      osc.start();
+
+      oscillators.push({ osc, h });
+      gains.push(gain);
+
+    });
+
+  });
+}
+
+function stopOscillators() {
+
+  oscillators.forEach(o => {
+    try { o.osc.stop(); } catch(e){}
+  });
+
+  oscillators = [];
+  gains = [];
+}
+
+/*******************************
+ * CONTROL DE PRESIÓN
+ *******************************/
+
+function updatePressure(rawAcc) {
+
+  // Magnitud absoluta
+  let pressure = Math.abs(rawAcc);
+
+  // Filtro
+  pressure = smooth(pressure);
+
+  // Zona muerta
+  if (pressure < NOISE_THRESHOLD) {
+    masterGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.05);
+    return;
   }
+
+  // Normalizar
+  pressure = Math.min(1, pressure / 6);
+
+  // Ganancia general
+  const volume = pressure * MAX_GAIN;
+  masterGain.gain.setTargetAtTime(volume, audioCtx.currentTime, 0.05);
+
+  // Modelado de armónicos (como lengüeta)
+  gains.forEach((g, i) => {
+
+    const h = oscillators[i].h;
+
+    // Los armónicos altos crecen con presión
+    const harmonicFactor = Math.pow(pressure, h * 0.6);
+
+    const target = (1 / h) * harmonicFactor * 0.8;
+
+    g.gain.setTargetAtTime(target, audioCtx.currentTime, 0.05);
+
+  });
 }
 
-function startSensor() {
-  window.addEventListener("devicemotion", handleMotion);
-}
+/*******************************
+ * ACELERÓMETRO
+ *******************************/
 
 function handleMotion(event) {
 
-  const acc = event.acceleration;
+  if (!running) return;
+
+  const acc = event.accelerationIncludingGravity;
+
   if (!acc) return;
 
-  const ax = acc.x || 0;
-  const ay = acc.y || 0;
-  const az = acc.z || 0;
+  // Eje principal (apertura/cierre)
+  const z = acc.z || 0;
 
-  const totalAcc = Math.sqrt(ax*ax + ay*ay + az*az);
+  updatePressure(z);
+}
 
-  const now = Date.now();
+/*******************************
+ * BOTONES
+ *******************************/
 
-  if (lastTime === null) {
-    lastTime = now;
-    return;
+const startBtn = document.getElementById('startBtn');
+const chordBtn = document.getElementById('chordBtn');
+
+startBtn.addEventListener('click', async () => {
+
+  if (!audioCtx) {
+    initAudio();
   }
 
-  const dt = (now - lastTime) / 1000;
-  lastTime = now;
-
-  // Filtro antideriva
-  let filteredAcc = totalAcc;
-
-  if (filteredAcc < accelThreshold) {
-    filteredAcc = 0;
+  if (audioCtx.state === 'suspended') {
+    await audioCtx.resume();
   }
 
-  if (filteredAcc > 0) {
+  // iOS permiso
+  if (typeof DeviceMotionEvent !== 'undefined' &&
+      typeof DeviceMotionEvent.requestPermission === 'function') {
 
-    if (!isMoving) {
-      velocity = 0;
-      distance = 0;
+    const permission = await DeviceMotionEvent.requestPermission();
+
+    if (permission !== 'granted') {
+      alert('Permiso de movimiento denegado');
+      return;
     }
+  }
 
-    isMoving = true;
+  window.addEventListener('devicemotion', handleMotion);
 
-    velocity += filteredAcc * dt;
-    distance += velocity * dt;
+  running = true;
+  startBtn.textContent = 'Audio Activo';
+});
 
+chordBtn.addEventListener('click', () => {
+
+  if (currentChord === 'major') {
+    currentChord = 'maj7';
+    chordBtn.textContent = 'Cambiar a Re Mayor';
   } else {
-
-    if (isMoving) velocity = 0;
-    isMoving = false;
+    currentChord = 'major';
+    chordBtn.textContent = 'Cambiar a Re Maj7';
   }
 
-  updateUI();
-  updateSound();
-}
-
-function updateUI() {
-
-  if (isMoving) {
-    btn.style.backgroundColor = "green";
-    btn.textContent = "En movimiento";
-  } else {
-    btn.style.backgroundColor = "red";
-    btn.textContent = "Quieto";
+  if (audioCtx) {
+    createOscillators();
   }
+});
 
-  let cm = Math.abs(distance * 100);
-
-  if (cm < noiseThreshold) cm = 0;
-
-  distanceText.textContent =
-    "Distancia: " + cm.toFixed(2) + " cm";
-}
-
-/* ======== CONTROL DE VOLUMEN POR DISTANCIA ======== */
-
-function updateSound() {
-
-  if (!gainNode) return;
-
-  let cm = Math.abs(distance * 100);
-
-  if (cm < noiseThreshold) {
-    gainNode.gain.value = 0;
-    return;
-  }
-
-  // Normalización (0–50 cm → 0–1)
-  let normalized = cm / 50;
-
-  if (normalized > 1) normalized = 1;
-
-  // Suavizado
-  gainNode.gain.setTargetAtTime(
-    normalized * 0.6,
-    audioCtx.currentTime,
-    0.05
-  );
-}
-
-/* ================================================ */
-
-document.body.addEventListener("click", requestPermission, { once: true });
 </script>
 
 </body>
