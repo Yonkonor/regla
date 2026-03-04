@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Sintetizador 3 Acordes - Séptima</title>
+    <title>Sintetizador 3 Acordes - Séptima (Volumen Mejorado)</title>
     <style>
         body {
             margin: 0;
@@ -129,7 +129,7 @@
         </div>
         <button id="powerButton">🔊 ENCENDER</button>
         <div class="status" id="statusText">Apagado</div>
-        <div class="note">Cada nota ahora incluye su tercera mayor y séptima menor (acorde de séptima dominante). Gira el dispositivo para mezclarlos.</div>
+        <div class="note">Cada nota ahora incluye su tercera mayor y séptima menor (acorde de séptima dominante). Volumen general aumentado.</div>
     </div>
 
     <script>
@@ -188,7 +188,8 @@
                 filterNode.Q.value = 0.7;
 
                 masterGainNode = audioContext.createGain();
-                masterGainNode.gain.value = 0.5;
+                // AUMENTAMOS EL VOLUMEN GENERAL DE 0.5 A 1.0 (100%)
+                masterGainNode.gain.value = 1.0;
                 
                 masterGainNode.connect(filterNode);
                 filterNode.connect(audioContext.destination);
